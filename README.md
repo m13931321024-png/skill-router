@@ -37,7 +37,7 @@
 ## 一键安装
 
 ```bash
-git clone https://github.com/anthropics/skill-router.git
+git clone https://github.com/m13931321024-png/skill-router.git
 cd skill-router
 bash install.sh
 ```

@@ -45,7 +45,18 @@ if os.path.exists(settings_file):
     with open(settings_file) as f:
         hook_ok = "skill-router" in f.read()
 
-print("=== Skill Router Status ===")
+# Read version from VERSION file
+version = "unknown"
+for vpath in [
+    os.path.join(claude_dir, "VERSION"),
+    os.path.join(os.path.expanduser("~/workspace/skill-router"), "VERSION"),
+]:
+    if os.path.exists(vpath):
+        with open(vpath) as vf:
+            version = vf.read().strip()
+        break
+
+print(f"=== Skill Router Status (v{version}) ===")
 print(f"Skills:  {len(skills)} ({', '.join(sorted(skills)) if skills else 'none'})")
 print(f"Plugins: {len(plugins)} ({', '.join(p.split('@')[0] for p in plugins) if plugins else 'none'})")
 print(f"MCP:     {mcp_count}")
@@ -142,7 +153,26 @@ if os.path.isdir(commands_dir):
         auto_keywords.append(skill_name.replace("-", ".?"))
 
         # 从 description 提取中文关键词（2-4字的词），过滤通用词
-        STOP_WORDS = {"你是一个", "一个", "用户", "输入", "以下", "可以", "使用", "进行", "通过", "根据", "如果", "需要", "支持", "包含", "在执行", "任何", "在执", "任务之", "何任务", "完成后", "按模块", "功能细", "灵感来"}
+        STOP_WORDS = {
+            # 原有停用词
+            "你是一个", "一个", "用户", "输入", "以下", "可以", "使用", "进行", "通过", "根据",
+            "如果", "需要", "支持", "包含", "在执行", "任何", "在执", "任务之", "何任务", "完成后",
+            "按模块", "功能细", "灵感来",
+            # 常见中文填充/虚词
+            "这个", "那个", "什么", "为什么", "怎么", "这些", "那些", "哪些", "或者", "但是",
+            "然后", "因为", "所以", "虽然", "不过", "只是", "而且", "并且", "已经", "正在",
+            "应该", "能够", "必须", "可能", "当然", "其实", "确实", "一定", "非常", "特别",
+            # 动词/助词类
+            "实现", "完成", "执行", "处理", "确保", "提供", "生成", "创建", "定义", "开始",
+            "结束", "继续", "返回", "输出", "请求", "响应", "调用", "获取", "设置", "更新",
+            # 代词/指示词
+            "自己", "我们", "他们", "它们", "大家", "所有", "每个", "其中", "之间", "之前",
+            "之后", "以上", "以下", "左右", "上面", "下面", "里面", "外面",
+            # 常见无意义组合
+            "的时候", "一下", "一些", "来自", "关于", "对于", "至少", "最多", "同时", "主要",
+            "具体", "相关", "基于", "适合", "合适", "方式", "方法", "步骤", "过程", "结果",
+            "情况", "问题", "功能", "模块", "系统", "项目", "文件", "代码", "数据", "内容",
+        }
         cn_words = [w for w in re.findall(r'[\u4e00-\u9fff]{2,4}', description) if w not in STOP_WORDS]
         auto_keywords.extend(cn_words[:5])
 

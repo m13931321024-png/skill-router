@@ -1,5 +1,5 @@
 #!/bin/bash
-# Skill Router v3: 提示词优化 + 优先级 + 依赖分析 + 非阻塞 LLM 兜底
+# Skill Router v4: 提示词优化 + 优先级 + 依赖分析 + 排除关键词 + 日志 + 可配置过滤 + 自动同步
 # UserPromptSubmit hook
 
 # 读取 hook stdin
@@ -19,12 +19,43 @@ except:
 [ -z "$USER_MSG" ] && exit 0
 echo "$USER_MSG" | grep -q '^/' && exit 0
 
+# ================================================================
+# Mid-session sync: 如果 commands/ 比 skill-router.json 更新，自动同步
+# ================================================================
+SYNC_SCRIPT="$HOME/.claude/skill-router-sync.sh"
+ROUTER_JSON="$HOME/.claude/skill-router.json"
+COMMANDS_DIR="$HOME/.claude/commands"
+LAST_SYNC_FILE="$HOME/.claude/.skill-router-last-sync"
+
+if [ -d "$COMMANDS_DIR" ] && [ -f "$ROUTER_JSON" ] && [ -f "$SYNC_SCRIPT" ]; then
+    COMMANDS_MTIME=$(stat -f "%m" "$COMMANDS_DIR" 2>/dev/null || stat -c "%Y" "$COMMANDS_DIR" 2>/dev/null || echo 0)
+    JSON_MTIME=$(stat -f "%m" "$ROUTER_JSON" 2>/dev/null || stat -c "%Y" "$ROUTER_JSON" 2>/dev/null || echo 0)
+
+    if [ "$COMMANDS_MTIME" -gt "$JSON_MTIME" ] 2>/dev/null; then
+        # 限制同步频率：5分钟内最多一次
+        NEED_SYNC=true
+        if [ -f "$LAST_SYNC_FILE" ]; then
+            LAST_SYNC=$(cat "$LAST_SYNC_FILE" 2>/dev/null || echo 0)
+            NOW=$(date +%s)
+            ELAPSED=$((NOW - LAST_SYNC))
+            if [ "$ELAPSED" -lt 300 ]; then
+                NEED_SYNC=false
+            fi
+        fi
+
+        if [ "$NEED_SYNC" = "true" ]; then
+            bash "$SYNC_SCRIPT" >/dev/null 2>&1
+            date +%s > "$LAST_SYNC_FILE"
+        fi
+    fi
+fi
+
 # 写入临时文件避免中文 shell 传递问题
 TMPFILE=$(mktemp)
 echo "$USER_MSG" > "$TMPFILE"
 
-# 全部逻辑在 Python 中完成
-RESULT=$(python3 - "$TMPFILE" << 'PYEOF'
+# 全部逻辑在 Python 中完成（输出两行：第1行 JSON result, 第2行 log info）
+FULL_OUTPUT=$(python3 - "$TMPFILE" << 'PYEOF'
 import json, re, sys, os
 
 # 从临时文件读取消息
@@ -78,8 +109,8 @@ except:
 # ================================================================
 # Layer 2: 意图排除 — 检测是否在谈论 skill/router 本身
 # ================================================================
-# 如果用户在讨论 skill-router/插件/配置本身，不应该触发任何 skill
-META_PATTERNS = [
+# 从配置中读取 meta_exclude，如果没有则使用默认值
+DEFAULT_META_PATTERNS = [
     r"(skill.?router|路由|hook|插件|plugin).*(改|修|加|删|优化|完善|升级|更新|发布|推送|push)",
     r"(改|修|加|删|优化|完善|升级).*(skill.?router|路由|hook|插件|plugin)",
     r"(给我|帮我).*(看|列|说|讲|介绍).*(skill|插件|plugin|hook|配置)",
@@ -88,12 +119,14 @@ META_PATTERNS = [
     r"github.*(push|推|发布|开源|仓库)",
     r"(发布|推送|开源|上传).*github",
 ]
+META_PATTERNS = config.get("meta_exclude", DEFAULT_META_PATTERNS)
+
 for pat in META_PATTERNS:
     if re.search(pat, msg_lower):
         sys.exit(0)
 
 # ================================================================
-# Layer 3: 关键词匹配 + 优先级评分
+# Layer 3: 关键词匹配 + 优先级评分 + 排除关键词
 # ================================================================
 
 # 优先级权重
@@ -102,6 +135,17 @@ PRIORITY_WEIGHT = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 matches = []
 for rule in rules:
     keywords = rule.get("keywords", [])
+    exclude_keywords = rule.get("exclude_keywords", [])
+
+    # 检查排除关键词：如果任何一个匹配，跳过此规则
+    excluded = False
+    for ekw in exclude_keywords:
+        if re.search(ekw.lower(), msg_lower):
+            excluded = True
+            break
+    if excluded:
+        continue
+
     hits = []
     for kw in keywords:
         if re.search(kw.lower(), msg_lower):
@@ -132,6 +176,10 @@ matches.sort(key=lambda x: x["score"], reverse=True)
 
 if not matches:
     # 没匹配到任何规则，放行让 CC 自己处理
+    # 输出空第一行（无 result），第二行 log info
+    msg_short = msg_stripped[:50].replace('\t', ' ').replace('\n', ' ')
+    print("")
+    print(f"{msg_short}\t(none)\tnone")
     sys.exit(0)
 
 def make_output(ctx):
@@ -152,7 +200,9 @@ if len(matches) == 1:
             f'请先理解用户的真实意图，然后使用 Skill 工具调用 skill="{m["skill"]}"，'
             f'将用户的原始消息作为 args 传入。'
         )
+        msg_short = msg_stripped[:50].replace('\t', ' ').replace('\n', ' ')
         print(make_output(ctx))
+        print(f"{msg_short}\t{m['skill']}\tsingle")
     sys.exit(0)
 
 # --- 多 skill 匹配：依赖分析 ---
@@ -212,8 +262,24 @@ else:
         f'每个 agent 内部调用对应的 Skill 工具。'
     )
 
+msg_short = msg_stripped[:50].replace('\t', ' ').replace('\n', ' ')
+matched_skills = ",".join(skill_names)
 print(make_output(ctx))
+print(f"{msg_short}\t{matched_skills}\t{mode}")
 PYEOF
 )
 
+# 分离 Python 输出：第1行是 RESULT JSON，第2行是 log info
+RESULT=$(echo "$FULL_OUTPUT" | head -n 1)
+LOG_INFO=$(echo "$FULL_OUTPUT" | tail -n 1)
+
+# 写入日志
+if [ -n "$LOG_INFO" ]; then
+    LOG_FILE="$HOME/.claude/skill-router-log.tsv"
+    TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+    echo -e "${TIMESTAMP}\t${LOG_INFO}" >> "$LOG_FILE"
+fi
+
+# 输出 RESULT
 [ -n "$RESULT" ] && echo "$RESULT"
+exit 0
