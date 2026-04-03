@@ -189,24 +189,6 @@ settings.json 中的 hook 需要手动移除（脚本会给出提示）。
 
 ---
 
-## 对比
-
-| 特性 | Skill Router | [superpowers](https://github.com/obra/superpowers) | [pua](https://github.com/anthropics/pua) | [diet103](https://github.com/anthropics/diet103) |
-|------|:---:|:---:|:---:|:---:|
-| 定位 | Skill 自动路由 | Agent 工作纪律 | Agent 工作态度 | 轻量 Prompt |
-| 自动调用 Skill | Yes | -- | -- | -- |
-| 关键词匹配 | Yes (正则) | -- | 内置触发词 | -- |
-| 多 Skill 串行/并行 | Yes | -- | -- | -- |
-| 优先级系统 | 4 级 | -- | -- | -- |
-| 自动扫描注册 | Yes | -- | -- | -- |
-| 插件/MCP 整合 | Yes | -- | -- | -- |
-| Hook 机制 | UserPromptSubmit | PreToolUse/PostToolUse | UserPromptSubmit | -- |
-| 可组合使用 | Yes | Yes (互补) | Yes (互补) | Yes |
-
-**推荐组合**：Skill Router（自动调用）+ superpowers（工作纪律）+ pua（工作态度）
-
----
-
 ## 架构
 
 ```
