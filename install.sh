@@ -4,38 +4,47 @@ set -e
 
 CLAUDE_DIR="$HOME/.claude"
 SETTINGS="$CLAUDE_DIR/settings.json"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "🔧 Installing Skill Router for Claude Code..."
 
-# 1. 复制路由脚本
-cp "$(dirname "$0")/skill-router.sh" "$CLAUDE_DIR/skill-router.sh"
-chmod +x "$CLAUDE_DIR/skill-router.sh"
+# 1. 复制核心脚本
+cp "$SCRIPT_DIR/skill-router.sh" "$CLAUDE_DIR/skill-router.sh"
+cp "$SCRIPT_DIR/skill-router-sync.sh" "$CLAUDE_DIR/skill-router-sync.sh"
+chmod +x "$CLAUDE_DIR/skill-router.sh" "$CLAUDE_DIR/skill-router-sync.sh"
 echo "  ✓ skill-router.sh → $CLAUDE_DIR/"
+echo "  ✓ skill-router-sync.sh → $CLAUDE_DIR/"
 
-# 2. 安装路由规则（如果不存在则用默认，已存在则保留用户的）
-if [ ! -f "$CLAUDE_DIR/skill-router.json" ]; then
-    cp "$(dirname "$0")/skill-router.json" "$CLAUDE_DIR/skill-router.json"
-    echo "  ✓ skill-router.json → $CLAUDE_DIR/ (默认规则)"
-else
-    echo "  ⊘ skill-router.json 已存在，保留你的自定义规则"
-fi
-
-# 3. 安装示例 skills（如果 commands 目录为空）
+# 2. 安装示例 skills（如果 commands 目录为空）
 mkdir -p "$CLAUDE_DIR/commands"
-SKILL_COUNT=$(ls "$CLAUDE_DIR/commands/"*.md 2>/dev/null | wc -l)
-if [ "$SKILL_COUNT" -eq 0 ]; then
-    cp "$(dirname "$0")/skills/"*.md "$CLAUDE_DIR/commands/" 2>/dev/null || true
+SKILL_COUNT=$(ls "$CLAUDE_DIR/commands/"*.md 2>/dev/null | wc -l || echo 0)
+if [ "$SKILL_COUNT" -eq 0 ] 2>/dev/null; then
+    cp "$SCRIPT_DIR/skills/"*.md "$CLAUDE_DIR/commands/" 2>/dev/null || true
     echo "  ✓ 示例 skills → $CLAUDE_DIR/commands/"
 else
-    echo "  ⊘ commands/ 已有 $SKILL_COUNT 个 skills，不覆盖"
+    echo "  ⊘ commands/ 已有 skill，不覆盖"
 fi
 
-# 4. 注入 UserPromptSubmit hook 到 settings.json
+# 3. 自动扫描生成 skill-router.json
+echo "  ⟳ 自动扫描 skills/插件/MCP..."
+bash "$CLAUDE_DIR/skill-router-sync.sh"
+
+# 4. 注入 hooks 到 settings.json
 if [ ! -f "$SETTINGS" ]; then
-    # 没有 settings.json，创建一个
     cat > "$SETTINGS" << 'EOF'
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/skill-router-sync.sh >/dev/null 2>&1; echo '{\"systemMessage\":\"[Skill Router 已同步] 所有 skill/插件/MCP 已自动加载。\"}'",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [
@@ -51,35 +60,26 @@ if [ ! -f "$SETTINGS" ]; then
   }
 }
 EOF
-    echo "  ✓ 创建 settings.json 并注入 hook"
+    echo "  ✓ 创建 settings.json（含 SessionStart 自动同步 + UserPromptSubmit 路由）"
 else
-    # settings.json 已存在，检查是否已有 skill-router hook
     if grep -q "skill-router" "$SETTINGS" 2>/dev/null; then
         echo "  ⊘ settings.json 已包含 skill-router hook"
     else
         echo ""
-        echo "  ⚠️  请手动将以下内容添加到 $SETTINGS 的 hooks.UserPromptSubmit 中："
-        echo ""
-        echo '    "UserPromptSubmit": ['
-        echo '      {'
-        echo '        "hooks": ['
-        echo '          {'
-        echo '            "type": "command",'
-        echo '            "command": "~/.claude/skill-router.sh",'
-        echo '            "timeout": 3,'
-        echo '            "statusMessage": "Skill Router"'
-        echo '          }'
-        echo '        ]'
-        echo '      }'
-        echo '    ]'
-        echo ""
-        echo "  或者让 Claude Code 帮你加：直接说 '帮我把 skill-router hook 加到 settings.json'"
+        echo "  ⚠️  请让 Claude Code 帮你加 hook，说：'帮我把 skill-router 的 hook 加到 settings.json'"
+        echo "  需要加两个 hook："
+        echo "    SessionStart → bash ~/.claude/skill-router-sync.sh（自动同步规则）"
+        echo "    UserPromptSubmit → ~/.claude/skill-router.sh（自动路由）"
     fi
 fi
 
 echo ""
-echo "✅ 安装完成！重启 Claude Code 生效。"
+echo "✅ 安装完成！"
 echo ""
-echo "使用方式："
-echo "  直接用自然语言说话，router 会自动匹配对应的 skill"
-echo "  编辑 ~/.claude/skill-router.json 添加你自己的规则"
+echo "工作方式："
+echo "  1. 每次开 CC 会话 → 自动扫描所有 skill/插件/MCP 生成路由规则"
+echo "  2. 你说话 → 自动匹配关键词 → 调用对应 skill"
+echo "  3. 新增 skill/插件 → 下次开会话自动注册，不用手动改配置"
+echo ""
+echo "手动同步：bash ~/.claude/skill-router-sync.sh"
+echo "编辑规则：~/.claude/skill-router.json"

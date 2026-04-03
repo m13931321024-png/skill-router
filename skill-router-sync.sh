@@ -1,0 +1,217 @@
+#!/bin/bash
+# Skill Router Sync: 自动扫描所有 skill/插件/MCP，生成 skill-router.json
+# 用法: bash ~/.claude/skill-router-sync.sh
+
+CLAUDE_DIR="$HOME/.claude"
+ROUTER_JSON="$CLAUDE_DIR/skill-router.json"
+COMMANDS_DIR="$CLAUDE_DIR/commands"
+
+python3 << 'PYEOF'
+import json, os, re, glob, sys
+
+claude_dir = os.path.expanduser("~/.claude")
+commands_dir = os.path.join(claude_dir, "commands")
+router_file = os.path.join(claude_dir, "skill-router.json")
+
+# 加载已有规则（保留用户手动加的自定义 keywords）
+existing_rules = {}
+if os.path.exists(router_file):
+    try:
+        with open(router_file) as f:
+            for rule in json.load(f).get("rules", []):
+                existing_rules[rule["skill"]] = rule
+    except:
+        pass
+
+rules = []
+
+# ================================================================
+# 1. 扫描 ~/.claude/commands/*.md — Skill 文件
+# ================================================================
+if os.path.isdir(commands_dir):
+    for md_file in sorted(glob.glob(os.path.join(commands_dir, "*.md"))):
+        skill_name = os.path.splitext(os.path.basename(md_file))[0]
+
+        with open(md_file, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # 提取 frontmatter description
+        description = ""
+        fm_match = re.search(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
+        if fm_match:
+            fm = fm_match.group(1)
+            desc_match = re.search(r'description:\s*[|>]?\s*\n?\s*(.+)', fm)
+            if desc_match:
+                description = desc_match.group(1).strip()[:80]
+
+        # 如果没有 frontmatter description，取第一行非空非标题内容
+        if not description:
+            for line in content.split("\n"):
+                line = line.strip()
+                if line and not line.startswith("#") and not line.startswith("---") and not line.startswith("用户输入"):
+                    description = line[:80]
+                    break
+
+        # 自动生成关键词：从 skill 名 + description + 内容中提取
+        auto_keywords = []
+
+        # skill 名本身
+        auto_keywords.append(skill_name.replace("-", ".?"))
+
+        # 从 description 提取中文关键词（2-4字的词），过滤通用词
+        STOP_WORDS = {"你是一个", "一个", "用户", "输入", "以下", "可以", "使用", "进行", "通过", "根据", "如果", "需要", "支持", "包含", "在执行", "任何", "在执", "任务之", "何任务", "完成后", "按模块", "功能细", "灵感来"}
+        cn_words = [w for w in re.findall(r'[\u4e00-\u9fff]{2,4}', description) if w not in STOP_WORDS]
+        auto_keywords.extend(cn_words[:5])
+
+        # 从内容中提取信号词标记
+        signal_match = re.findall(r'信号词[：:]\s*(.+)', content)
+        for sig in signal_match:
+            words = re.findall(r'[\u4e00-\u9fff]{2,6}|[a-zA-Z]{3,}', sig)
+            auto_keywords.extend(words[:8])
+
+        # 从参数说明中提取示例用词
+        example_match = re.findall(r'/\w+\s+(.{2,20}?)(?:\s+--|$)', content)
+        for ex in example_match:
+            words = re.findall(r'[\u4e00-\u9fff]{2,4}', ex)
+            auto_keywords.extend(words[:3])
+
+        # 去重
+        seen = set()
+        unique_keywords = []
+        for kw in auto_keywords:
+            kw_lower = kw.lower()
+            if kw_lower not in seen and len(kw) >= 2:
+                seen.add(kw_lower)
+                unique_keywords.append(kw)
+
+        # 如果已有用户自定义规则，合并关键词
+        if skill_name in existing_rules:
+            old_rule = existing_rules[skill_name]
+            # 保留用户手动添加的关键词
+            old_kws = set(old_rule.get("keywords", []))
+            new_kws = set(unique_keywords)
+            merged = list(old_kws | new_kws)
+            priority = old_rule.get("priority", "medium")
+            description = old_rule.get("description", description)
+        else:
+            merged = unique_keywords
+            priority = "medium"
+
+        rules.append({
+            "skill": skill_name,
+            "priority": priority,
+            "keywords": merged[:20],  # 最多 20 个关键词
+            "description": description,
+            "source": "commands"
+        })
+
+# ================================================================
+# 2. 扫描插件（从 settings.json 的 enabledPlugins）
+# ================================================================
+settings_file = os.path.join(claude_dir, "settings.json")
+if os.path.exists(settings_file):
+    try:
+        with open(settings_file) as f:
+            settings = json.load(f)
+
+        plugins = settings.get("enabledPlugins", {})
+        for plugin_key, enabled in plugins.items():
+            if not enabled:
+                continue
+            plugin_name = plugin_key.split("@")[0]
+
+            # 跳过不需要手动调用的插件（自动生效的）
+            auto_plugins = {"superpowers", "rust-analyzer-lsp"}
+            if plugin_name in auto_plugins:
+                continue
+
+            # PUA 有自己的触发机制，不需要 router
+            if plugin_name == "pua":
+                continue
+
+            # 其他插件加入路由
+            if plugin_name not in existing_rules:
+                rules.append({
+                    "skill": plugin_name,
+                    "priority": "low",
+                    "keywords": [plugin_name.replace("-", ".?")],
+                    "description": f"插件: {plugin_name}",
+                    "source": "plugin"
+                })
+    except:
+        pass
+
+# ================================================================
+# 3. 扫描 MCP Servers（从 .mcp.json）
+# ================================================================
+mcp_locations = [
+    os.path.join(claude_dir, ".mcp.json"),
+    os.path.join(os.getcwd(), ".mcp.json"),
+]
+for mcp_file in mcp_locations:
+    if os.path.exists(mcp_file):
+        try:
+            with open(mcp_file) as f:
+                mcp_config = json.load(f)
+
+            servers = mcp_config.get("mcpServers", {})
+            for server_name, server_config in servers.items():
+                if server_name not in existing_rules:
+                    # 从 server 名称生成关键词
+                    keywords = [server_name.replace("-", ".?")]
+                    # 从 command/args 提取线索
+                    cmd = server_config.get("command", "")
+                    if cmd:
+                        keywords.append(os.path.basename(cmd).split(".")[0])
+
+                    rules.append({
+                        "skill": f"mcp__{server_name}",
+                        "priority": "low",
+                        "keywords": keywords,
+                        "description": f"MCP Server: {server_name}",
+                        "source": "mcp"
+                    })
+        except:
+            pass
+
+# ================================================================
+# 4. 扫描项目级 skill（.claude/commands/）
+# ================================================================
+project_commands = os.path.join(os.getcwd(), ".claude", "commands")
+if os.path.isdir(project_commands) and project_commands != commands_dir:
+    for md_file in glob.glob(os.path.join(project_commands, "*.md")):
+        skill_name = os.path.splitext(os.path.basename(md_file))[0]
+        if any(r["skill"] == skill_name for r in rules):
+            continue  # 全局已有，跳过
+
+        with open(md_file, "r", encoding="utf-8") as f:
+            first_line = ""
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and not line.startswith("---"):
+                    first_line = line[:80]
+                    break
+
+        rules.append({
+            "skill": skill_name,
+            "priority": "medium",
+            "keywords": [skill_name.replace("-", ".?")],
+            "description": first_line or f"项目 Skill: {skill_name}",
+            "source": "project"
+        })
+
+# ================================================================
+# 输出
+# ================================================================
+output = {"rules": rules}
+
+with open(router_file, "w", encoding="utf-8") as f:
+    json.dump(output, f, indent=2, ensure_ascii=False)
+
+print(f"Skill Router 已同步:")
+print(f"  Skills:  {sum(1 for r in rules if r.get('source') == 'commands')}")
+print(f"  Plugins: {sum(1 for r in rules if r.get('source') == 'plugin')}")
+print(f"  MCP:     {sum(1 for r in rules if r.get('source') == 'mcp')}")
+print(f"  Project: {sum(1 for r in rules if r.get('source') == 'project')}")
+print(f"  Total:   {len(rules)} rules → {router_file}")
+PYEOF
