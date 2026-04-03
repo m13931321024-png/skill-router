@@ -1,11 +1,122 @@
 #!/bin/bash
 # Skill Router Sync: 自动扫描所有 skill/插件/MCP，生成 skill-router.json
-# 用法: bash ~/.claude/skill-router-sync.sh
+# 用法: bash ~/.claude/skill-router-sync.sh [--check]
 
 CLAUDE_DIR="$HOME/.claude"
 ROUTER_JSON="$CLAUDE_DIR/skill-router.json"
 COMMANDS_DIR="$CLAUDE_DIR/commands"
+CHECK_MODE=0
 
+# 解析参数
+for arg in "$@"; do
+    case "$arg" in
+        --check) CHECK_MODE=1 ;;
+    esac
+done
+
+# --check 模式：输出状态报告，不修改任何文件
+if [ "$CHECK_MODE" -eq 1 ]; then
+    python3 - << 'PYEOF'
+import json, os, re
+
+claude_dir = os.path.expanduser("~/.claude")
+router_file = os.path.join(claude_dir, "skill-router.json")
+commands_dir = os.path.join(claude_dir, "commands")
+settings_file = os.path.join(claude_dir, "settings.json")
+
+# 加载规则
+rules = []
+if os.path.exists(router_file):
+    try:
+        with open(router_file) as f:
+            rules = json.load(f).get("rules", [])
+    except:
+        pass
+
+# 分类统计
+skills = [r for r in rules if r.get("source") == "commands"]
+plugins = [r for r in rules if r.get("source") == "plugin"]
+mcps = [r for r in rules if r.get("source") == "mcp"]
+projects = [r for r in rules if r.get("source") == "project"]
+
+skill_names = [r["skill"] for r in skills]
+plugin_names = [r["skill"] for r in plugins]
+mcp_names = [r["skill"].replace("mcp__", "") for r in mcps]
+
+# 检查 hook 状态
+hook_ok = False
+if os.path.exists(settings_file):
+    try:
+        with open(settings_file) as f:
+            content = f.read()
+        hook_ok = "skill-router" in content
+    except:
+        pass
+
+# 检查 commands 目录中未被扫描进规则的 skill
+commands_on_disk = []
+if os.path.isdir(commands_dir):
+    import glob
+    for md in glob.glob(os.path.join(commands_dir, "*.md")):
+        commands_on_disk.append(os.path.splitext(os.path.basename(md))[0])
+unregistered = [s for s in commands_on_disk if s not in skill_names]
+
+# 输出报告
+print("=== Skill Router Status ===")
+print(f"Skills:  {len(skills)} ({', '.join(skill_names) if skill_names else 'none'})")
+print(f"Plugins: {len(plugins)} ({', '.join(plugin_names) if plugin_names else 'none'})")
+print(f"MCP:     {len(mcps)} ({', '.join(mcp_names) if mcp_names else 'none'})")
+if projects:
+    project_names = [r["skill"] for r in projects]
+    print(f"Project: {len(projects)} ({', '.join(project_names)})")
+print(f"Rules:   {len(rules)} active rules")
+print(f"Hooks:   {'OK' if hook_ok else 'NOT CONFIGURED (run install.sh)'}")
+
+# 示例匹配
+if rules:
+    print("")
+    print("Sample matches:")
+
+    # 定义测试用例
+    test_cases = [
+        "帮我优化打包",
+        "帮我调研方案",
+        "帮我提交代码",
+        "帮我制定学习计划",
+        "多agent协作完成任务",
+    ]
+
+    for test_msg in test_cases:
+        msg_lower = test_msg.lower()
+        best_match = None
+        best_score = 0
+        for rule in rules:
+            hits = 0
+            for kw in rule.get("keywords", []):
+                if re.search(kw.lower(), msg_lower):
+                    hits += 1
+            if hits > 0:
+                priority_w = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+                score = (hits / max(len(rule.get("keywords", [])), 1)) * priority_w.get(rule.get("priority", "medium"), 2)
+                if score > best_score:
+                    best_score = score
+                    best_match = rule["skill"]
+        if best_match:
+            print(f'  "{test_msg}" -> {best_match}')
+
+# 警告
+if unregistered:
+    print("")
+    print(f"[!] {len(unregistered)} skill(s) in commands/ not in router:")
+    for s in unregistered:
+        print(f"    - {s} (run sync to register)")
+
+print("===========================")
+PYEOF
+    exit 0
+fi
+
+# 正常同步模式
 python3 << 'PYEOF'
 import json, os, re, glob, sys
 
@@ -213,5 +324,5 @@ print(f"  Skills:  {sum(1 for r in rules if r.get('source') == 'commands')}")
 print(f"  Plugins: {sum(1 for r in rules if r.get('source') == 'plugin')}")
 print(f"  MCP:     {sum(1 for r in rules if r.get('source') == 'mcp')}")
 print(f"  Project: {sum(1 for r in rules if r.get('source') == 'project')}")
-print(f"  Total:   {len(rules)} rules → {router_file}")
+print(f"  Total:   {len(rules)} rules -> {router_file}")
 PYEOF
