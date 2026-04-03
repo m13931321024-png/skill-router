@@ -42,7 +42,7 @@ cd skill-router
 bash install.sh
 ```
 
-新用户（`~/.claude/commands/` 为空）会自动安装 5 个 Starter Skills。
+新用户（`~/.claude/commands/` 为空）会自动安装 4 个 Starter Skills。
 已有 Skills 的用户不会被覆盖，只补充缺失的。
 
 ---
@@ -137,7 +137,7 @@ vim ~/.claude/skill-router.json
 
 ## Starter Skills
 
-安装时附带 5 个开箱即用的 Skill：
+安装时附带 4 个开箱即用的 Skill：
 
 | Skill | 触发示例 | 说明 |
 |-------|----------|------|
@@ -145,7 +145,6 @@ vim ~/.claude/skill-router.json
 | `research` | "帮我调研技术方案" | 需求调研专家：问题清单 -> 方案对比 -> 执行摘要 |
 | `smart-commit` | "帮我提交代码" | 按模块分批提交，中文 commit message |
 | `orchestrate` | "多 agent 协作完成" | 子 Agent 任务拆解、并行派发、验收闭环 |
-| `learning-plan` | "帮我制定学习计划" | 前端工程师向 AI 时代构建师转型的学习教练 |
 
 所有 Starter Skills 源码在 `skills/` 目录，可自由修改。
 
@@ -202,7 +201,6 @@ settings.json 中的 hook 需要手动移除（脚本会给出提示）。
     research.md                #   |
     smart-commit.md            #   |-- skill-router-sync.sh 扫描这些
     orchestrate.md             #   |
-    learning-plan.md           #   |
     ...                        #   v
                                # 生成 skill-router.json 中的规则
 
