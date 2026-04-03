@@ -1,0 +1,39 @@
+{
+  "rules": [
+    {
+      "skill": "autoresearch",
+      "keywords": ["优化", "打包", "性能", "bundle", "lighthouse", "修复.*测试", "研究", "学习", "掌握", "master", "study", "deep dive", "知识库", "autoresearch"],
+      "description": "自主实验循环 — 代码优化或知识研究"
+    },
+    {
+      "skill": "research",
+      "keywords": ["调研", "需求分析", "方案对比", "技术选型", "评估.*方案", "research"],
+      "description": "需求调研 — 问题清单→方案对比→结论"
+    },
+    {
+      "skill": "orchestrate",
+      "keywords": ["多.*agent", "并行", "子agent", "派.*agent", "协作", "orchestrate", "拆.*任务"],
+      "description": "多 Agent 协作 — 派发+验收闭环"
+    },
+    {
+      "skill": "smart-commit",
+      "keywords": ["提交", "commit", "push.*代码", "分批提交", "smart.?commit"],
+      "description": "智能提交 — 按模块分批中文 commit"
+    },
+    {
+      "skill": "learning-plan",
+      "keywords": ["学习计划", "学习路线", "转型", "成长.*路线", "learning.?plan"],
+      "description": "学习教练 — AI 时代构建师转型规划"
+    },
+    {
+      "skill": "audit",
+      "keywords": ["审计", "代码审查", "code.*review", "质量检查", "audit"],
+      "description": "Angular 全量代码审计"
+    },
+    {
+      "skill": "pua",
+      "keywords": ["pua", "加压", "别偷懒", "try harder", "穷尽"],
+      "description": "PUA 压力驱动"
+    }
+  ]
+}
