@@ -1,119 +1,101 @@
 {
-  "meta_exclude": [
-    "(skill.?router|路由|hook|插件|plugin).*(改|修|加|删|优化|完善|升级|更新|发布|推送|push)",
-    "(改|修|加|删|优化|完善|升级).*(skill.?router|路由|hook|插件|plugin)",
-    "github.*(push|推|发布|开源|仓库)",
-    "(发布|推送|开源|上传).*github"
-  ],
   "rules": [
     {
       "skill": "autoresearch",
       "priority": "high",
       "keywords": [
-        "加载",
-        "deep dive",
-        "学习",
-        "领域驱动",
-        "循环引擎",
-        "优化.{0,6}打包",
-        "master",
-        "你是一个",
-        "优化打包",
-        "设计",
-        "bundle",
-        "优化首屏",
         "autoresearch",
-        "掌握",
-        "失败的单",
-        "研究",
-        "灵感来自",
-        "研究.{0,4}技术",
+        "deep dive",
+        "master",
+        "study",
+        "bundle",
+        "lighthouse",
+        "优化.{0,6}体积",
+        "优化.{0,6}性能",
+        "优化.{0,6}速度",
+        "优化.{0,6}打包",
         "打包.{0,6}优化",
-        "修复所有"
+        "修复.{0,6}测试",
+        "研究.{0,4}技术",
+        "学习.{0,4}技术",
+        "掌握",
+        "知识库",
+        "自动.{0,4}实验",
+        "跑.{0,4}实验"
       ],
-      "exclude_keywords": ["skill.?router", "插件", "plugin", "hook", "配置.*router"],
+      "exclude_keywords": [
+        "skill.?router",
+        "插件",
+        "plugin",
+        "hook",
+        "配置.*router"
+      ],
       "description": "自主实验循环 — 代码优化或知识研究",
-      "source": "commands"
+      "source": "commands",
+      "manual": true
     },
     {
       "skill": "learning-plan",
       "priority": "medium",
       "keywords": [
-        "转型.*路线",
-        "转型",
-        "成长.*计划",
-        "学习路线",
         "学习计划",
-        "帮助前端",
-        "制定.*计划",
-        "工程师向",
-        "你是一个",
-        "学习教练",
-        "时代构建",
-        "learning.?plan"
+        "学习路线",
+        "转型.*路线",
+        "成长.*计划",
+        "learning.?plan",
+        "制定.*计划"
       ],
       "description": "学习教练 — AI 时代构建师转型规划",
-      "source": "commands"
+      "source": "commands",
+      "manual": true
     },
     {
       "skill": "orchestrate",
       "priority": "medium",
       "keywords": [
-        "派.*agent",
-        "orchestrate",
-        "协作与验",
-        "协作",
-        "子agent",
-        "收闭环机",
         "多.*agent",
         "并行.*任务",
+        "子agent",
+        "派.*agent",
+        "协作",
         "拆.*任务",
         "分.*任务"
       ],
       "description": "多 Agent 协作 — 派发+验收闭环",
-      "source": "commands"
+      "source": "commands",
+      "manual": true
     },
     {
       "skill": "research",
       "priority": "high",
       "keywords": [
-        "需求调研",
-        "需求分析",
-        "在执行任",
-        "评估.*方案",
-        "你必须严",
-        "你是一个",
-        "方案对比",
-        "research",
-        "对比.*方案",
         "调研",
-        "选.*框架",
-        "何任务之",
+        "需求分析",
+        "方案对比",
         "技术选型",
-        "专家",
+        "评估.*方案",
+        "对比.*方案",
+        "选.*框架",
         "选.*技术"
       ],
       "description": "需求调研 — 问题清单→方案对比→结论",
-      "source": "commands"
+      "source": "commands",
+      "manual": true
     },
     {
       "skill": "smart-commit",
       "priority": "low",
       "keywords": [
-        "功能细节",
-        "commit",
         "提交.*代码",
-        "帮我提交",
-        "完成后",
-        "smart.?commit",
+        "commit",
         "push.*代码",
-        "按模块和",
-        "中文描述",
         "分批提交",
-        "代码修改"
+        "smart.?commit",
+        "帮我提交"
       ],
       "description": "智能提交 — 按模块分批中文 commit",
-      "source": "commands"
+      "source": "commands",
+      "manual": true
     }
   ]
 }

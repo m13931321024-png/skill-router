@@ -197,10 +197,14 @@ if os.path.isdir(commands_dir):
                 seen.add(kw_lower)
                 unique_keywords.append(kw)
 
-        # 如果已有用户自定义规则，合并关键词
+        # 如果已有用户自定义规则
         if skill_name in existing_rules:
             old_rule = existing_rules[skill_name]
-            # 保留用户手动添加的关键词
+            # manual=True 的规则完全保留，不覆盖任何字段
+            if old_rule.get("manual"):
+                rules.append(old_rule)
+                continue
+            # 非 manual 的规则合并关键词
             old_kws = set(old_rule.get("keywords", []))
             new_kws = set(unique_keywords)
             merged = list(old_kws | new_kws)
@@ -213,7 +217,7 @@ if os.path.isdir(commands_dir):
         rules.append({
             "skill": skill_name,
             "priority": priority,
-            "keywords": merged[:20],  # 最多 20 个关键词
+            "keywords": merged[:20],
             "description": description,
             "source": "commands"
         })
